@@ -79,50 +79,75 @@ end
 localparam SUM_WIDTH = (2*IW) + $clog2(FILTER_LENGTH); // Prevent worst case overflow possibilities
 logic [IW-1:0] x[FILTER_LENGTH-1:0];                   // Array to store past input values
 logic [2*IW-1:0] mult_results[FILTER_LENGTH-1:0];      // Storing the multiplication results
-logic [SUM_WIDTH-1:0] sum_result;                      // 32-bit result after summing
+logic [SUM_WIDTH-1:0] sum_result, pipeline_sum;        // SUM_WIDTH-bit result after summing
 logic [IW-1:0] downsample_out;                         // Downsampled signals output, updates from sum_result at DATA_CLK_OUT rate
+
+// Systolic array logic
+logic [SUM_WIDTH-1:0] PE_out[FILTER_LENGTH];
+logic [SUM_WIDTH-1:0] PE_accum_in[FILTER_LENGTH], PE_accum_out[FILTER_LENGTH];
+
+// Instantiating PEs
+generate
+    for (int i = 0; i < FILTER_LENGTH; i++) begin: PE_INST
+        PE u_PE #(
+            .IW(IW),
+            .SUM_WIDTH(SUM_WIDTH)
+        )
+        (
+            .clk(clk),
+            .reset(reset),
+            .x(x[i]),
+            .coeff(coefficients[i]),
+            .accum_in(i == 0 ? 0 : PE_accum_out[i-1]),
+            .accum_out(PE_accum_out[i])
+        );
+    end
+endgenerate
 
 always_ff @(posedge clk or posedge reset) begin
     if (reset) begin
-        sum_result       <= '0;
-        downsample_out   <= '0;
-        data_out         <= '0;
+        data_out <= '0;
         for (int i = FILTER_LENGTH-1; i >= 0; i = i-1)begin
             x[i] <= '0;
         end
-        for (int i = FILTER_LENGTH-1; i >= 0; i = i-1)begin
-            mult_results[i] <= '0;
-        end
     end else begin
-        // Pre-filtering at DATA_CLK_IN sample rate
+        // Input sampling
         if (in_sample_valid) begin
             // Shift old data values
             x[0] <= data_in;
-            for(int i = 1; i < FILTER_LENGTH; i = i+1) begin
+            for(int i = 1; i < FILTER_LENGTH; i = i+1)
                 x[i] <= x[i-1];
-            end
-
-            // Multiply by coefficients
-            for(int i = 0; i < FILTER_LENGTH; i = i+1) begin
-                mult_results[i] <= x[i] * coefficients[i];
-                // Sum the results
-            end
-
-            // Summation
-            for(int i = 0; i < FILTER_LENGTH; i = i+1) begin
-                sum_result <= sum_result + mult_results[i];
-            end
         end
 
         // Downsample to DATA_CLK_OUT sample rate
         if (out_sample_valid) begin
-            // Downscale and round
-            downsample_out <= sum_result[SUM_WIDTH-1:SUM_WIDTH-IW] + (sum_result[SUM_WIDTH-IW-1] ? 1 : 0); // Right shift by IW-1 and round
-            data_out <= downsample_out; // Update output at resampled frequency rate
-        end else begin
-            data_out <= data_out; // Hold last value when not sampling new data
+            data_out <= PE_accum_out[FILTER_LENGTH-1][SUM_WIDTH-1:SUM_WIDTH-IW] + (PE_accum_out[FILTER_LENGTH-1][SUM_WIDTH-IW-1] ? 1 : 0); // Right shift by IW-1 and round
         end
     end
 end
 
+endmodule
+
+
+// Processing Element (PE) for Systolic array
+module PE #(
+    parameter IW = 16,
+    parameter SUM_WIDTH = 32
+)
+(
+    input logic           clk,
+    input logic           reset,
+    input logic [IW-1:0]  x,
+    input logic [IW-1:0]  coeff,
+    input logic [SUM_WIDTH-1:0] accum_in,
+    output logic [SUM_WIDTH-1:0] accum_out
+);
+    logic [2*IW-1:0] mult_result;
+    always_ff @(posedge clk or posedge reset) begin
+        if (reset)
+            accum_out <= 0;
+        else
+            accum_out <= accum_in + mult_result;
+    end
+    assign mult_result = x * coeff;
 endmodule
