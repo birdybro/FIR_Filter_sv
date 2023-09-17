@@ -67,7 +67,7 @@
 // print(scaled_coeffs)
 
 
-module audio_fir_filter #(
+module fir_filter #(
     parameter IW=16,
     parameter FILTER_LENGTH=20, // (AKA number of taps)
     parameter MCLK_RATE=53693175,
@@ -95,10 +95,11 @@ logic [IW*2-1:0] sum_result;                       // 32-bit result after summin
 
 always_ff @(posedge clk or posedge reset) begin
     if (reset) begin
-        counter_in      <= 0;
-        counter_out     <= 0;
-        in_sample_valid <= 0;
-        data_out        <= 0;
+        counter_in       <= 0;
+        counter_out      <= 0;
+        in_sample_valid  <= 0;
+        out_sample_valid <= 0;
+        data_out         <= 0;
         // Initialize sample storage registers to zero
         for (int i = FILTER_LENGTH-1; i> 0; i = i-1)begin
             x[i] <= '0;
