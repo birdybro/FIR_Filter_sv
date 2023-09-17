@@ -92,6 +92,7 @@ logic in_sample_valid, out_sample_valid;               // Indicates when a new s
 logic [IW-1:0] x[FILTER_LENGTH-1:0];               // Array to store past input values
 logic [IW*2-1:0] mult_results[FILTER_LENGTH-1:0];  // Storing the multiplication results
 logic [IW*2-1:0] sum_result;                       // 32-bit result after summing
+logic [IW-1:0] downsample_out;
 
 always_ff @(posedge clk or posedge reset) begin
     // Initialize registers
@@ -101,6 +102,7 @@ always_ff @(posedge clk or posedge reset) begin
         in_sample_valid  <=  0;
         out_sample_valid <=  0;
         sum_result       <= '0;
+        downsample_out   <= '0;
         data_out         <= '0;
         for (int i = FILTER_LENGTH-1; i> 0; i = i-1)begin
             x[i] <= '0;
@@ -144,7 +146,10 @@ always_ff @(posedge clk or posedge reset) begin
         // Downsample to DATA_CLK_OUT sample rate
         if (out_sample_valid) begin
             // Downscale and round
-            data_out <= sum_result[IW*2-1:IW] + (sum_result[IW-1] ? 1 : 0); // Right shift by IW-1 and round
+            downsample_out <= sum_result[IW*2-1:IW] + (sum_result[IW-1] ? 1 : 0); // Right shift by IW-1 and round
+            data_out <= downsample_out; // Update output at resampled frequency rate
+        end else begin
+            data_out <= data_out; // Hold last value when not sampling new data
         end
     end
 end
