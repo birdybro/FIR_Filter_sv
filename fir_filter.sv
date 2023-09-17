@@ -67,30 +67,38 @@
 // print(scaled_coeffs)
 
 
-module fir_filter (
-    input  logic        clk,     // 53.693175MHz clock assumed by example
-    input  logic        reset,   // Active high reset
-    input  logic [15:0] data_in, // 16-bit input data
-    output logic [15:0] data_out // 16-bit output data
+module audio_fir_filter #(
+    parameter IW=16,
+    parameter FILTER_LENGTH=20, // (AKA number of taps)
+    parameter MCLK_RATE=53693175,
+    parameter DATA_CLK_IN=300000,
+    parameter DATA_CLK_OUT=48000
+)
+(
+    input  logic          clk,                             // 53.693175MHz Clock
+    input  logic          reset,                           // Active high reset
+    input  logic [IW-1:0] coefficients[FILTER_LENGTH-1:0], // Scaled coefficients array with fixed-point values
+    input  logic [IW-1:0] data_in,                         // 16-bit input data
+    output logic [IW-1:0] data_out                         // 16-bit output data
 );
 
-// Counter values - 53.693175MHz to get 300kHz sampling rate requires 178.97725 counter
-localparam COUNTER_MAX = 178;   // Assuming 178.97725 gets truncated to 178, almost 50% duty cycle
-logic [7:0] counter;            // Counter with enough bits to count to COUNTER_MAX
-logic sample_valid;             // Indicates when a new sample should be processed
+// Counter values for clock division for input and output data sampling rates
+localparam SAMPLE_RATE_IN  = MCLK_RATE / DATA_CLK_IN;  // Sample rate divider for incoming data
+localparam SAMPLE_RATE_OUT = MCLK_RATE / DATA_CLK_OUT; // Sample rate divider for outgoing data
+logic [31:0] counter_in;                               // Counter with enough bits to count to SAMPLE_RATE_IN
+logic [31:0] counter_out;                              // Counter with enough bits to count to SAMPLE_RATE_OUT
+logic in_sample_valid, out_sample_valid;               // Indicates when a new sample should be processed
 
-// Define your filter length
-localparam FILTER_LENGTH = 20; // Adjust according to your coefficients length
-logic [15:0] COEFFICIENTS[FILTER_LENGTH-1:0] = '{0, -54, 0, 383, 437, -741, -1963, 0, 6133, 12189, 12189, 6133, 0, -1963, -741, 437, 383, 0, -54, 0};
-
-logic [15:0] x[FILTER_LENGTH-1:0];             // Array to store past input values
-logic [31:0] mult_results[FILTER_LENGTH-1:0];  // Storing the multiplication results
-logic [31:0] sum_result;                       // 32-bit result after summing
+logic [IW-1:0] x[FILTER_LENGTH-1:0];               // Array to store past input values
+logic [IW*2-1:0] mult_results[FILTER_LENGTH-1:0];  // Storing the multiplication results
+logic [IW*2-1:0] sum_result;                       // 32-bit result after summing
 
 always_ff @(posedge clk or posedge reset) begin
     if (reset) begin
-        counter <= 0;
-        sample_valid <= 0;
+        counter_in      <= 0;
+        counter_out     <= 0;
+        in_sample_valid <= 0;
+        data_out        <= 0;
         // Initialize sample storage registers to zero
         for (int i = FILTER_LENGTH-1; i> 0; i = i-1)begin
             x[i] <= '0;
@@ -99,18 +107,25 @@ always_ff @(posedge clk or posedge reset) begin
         for (int i = FILTER_LENGTH-1; i> 0; i = i-1)begin
             mult_results[i] <= '0;
         end
-        data_out <= 0;
+
     end else begin
         // Counter Logic
-        if (counter == COUNTER_MAX) begin
-            sample_valid <= 1'b1;
-            counter <= 0;
+        if (counter_in == SAMPLE_RATE_IN) begin
+            in_sample_valid <= 1'b1;
+            counter_in <= 0;
         end else begin
-            sample_valid <= 1'b0;
-            counter <= counter + 1;
+            in_sample_valid <= 1'b0;
+            counter_in <= counter_in + 1;
+        end
+        if (counter_out == SAMPLE_RATE_OUT) begin
+            out_sample_valid <= 1'b1;
+            counter_out <= 0;
+        end else begin
+            out_sample_valid <= 1'b0;
+            counter_out <= counter_out + 1;
         end
 
-        if (sample_valid) begin
+        if (in_sample_valid) begin
             // Shift old data values
             for(int i = FILTER_LENGTH-1; i > 0; i = i-1) begin
                 x[i] <= x[i-1];
@@ -119,13 +134,15 @@ always_ff @(posedge clk or posedge reset) begin
 
             // Compute multiplication results
             for(int i = 0; i < FILTER_LENGTH; i = i+1) begin
-                mult_results[i] <= x[i] * COEFFICIENTS[i];
+                mult_results[i] <= x[i] * coefficients[i];
                 // Sum the results
                 sum_result <= sum_result + mult_results[i];
             end
-
+        end
+        // Downsample to DATA_CLK_OUT sample rate
+        if (out_sample_valid) begin
             // Downscale and round
-            data_out <= sum_result[31:16] + (sum_result[15] ? 1 : 0); // Right shift by 16 and round
+            data_out <= sum_result[IW*2-1:IW] + (sum_result[IW-1] ? 1 : 0); // Right shift by IW-1 and round
         end
     end
 end
