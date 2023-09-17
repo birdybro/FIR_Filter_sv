@@ -49,7 +49,7 @@ logic [31:0] counter_in;                               // Counter with enough bi
 logic [31:0] counter_out;                              // Counter with enough bits to count to SAMPLE_RATE_OUT
 logic in_sample_valid, out_sample_valid;   // Indicates when a new sample should be processed
 
-always_ff (posedge clk or posedge reset) begin
+always_ff @(posedge clk or posedge reset) begin
     if (reset) begin
         counter_in       <= '0;
         counter_out      <= '0;
