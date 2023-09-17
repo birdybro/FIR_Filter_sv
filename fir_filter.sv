@@ -94,17 +94,17 @@ logic [IW*2-1:0] mult_results[FILTER_LENGTH-1:0];  // Storing the multiplication
 logic [IW*2-1:0] sum_result;                       // 32-bit result after summing
 
 always_ff @(posedge clk or posedge reset) begin
+    // Initialize registers
     if (reset) begin
-        counter_in       <= 0;
-        counter_out      <= 0;
-        in_sample_valid  <= 0;
-        out_sample_valid <= 0;
-        data_out         <= 0;
-        // Initialize sample storage registers to zero
+        counter_in       <= '0;
+        counter_out      <= '0;
+        in_sample_valid  <=  0;
+        out_sample_valid <=  0;
+        sum_result       <= '0;
+        data_out         <= '0;
         for (int i = FILTER_LENGTH-1; i> 0; i = i-1)begin
             x[i] <= '0;
         end
-        // Initialize multiplication result registers to zero
         for (int i = FILTER_LENGTH-1; i> 0; i = i-1)begin
             mult_results[i] <= '0;
         end
@@ -127,6 +127,7 @@ always_ff @(posedge clk or posedge reset) begin
         end
 
         if (in_sample_valid) begin
+            sum_result <= '0 // Reset sum before new computation
             // Shift old data values
             for(int i = FILTER_LENGTH-1; i > 0; i = i-1) begin
                 x[i] <= x[i-1];
