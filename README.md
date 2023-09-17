@@ -1,5 +1,6 @@
 # FIR_Filter_sv
 FIR Filter written in SystemVerilog
+by Kevin Coleman (birdybro)
 
 I may make it more parameterizable later, it's not a major priority currently, just got it to the point where I can synthesize it and use it in the [MiSTer FPGA MegaDrive core](https://github.com/MiSTer-devel/MegaDrive_MiSTer).
 
