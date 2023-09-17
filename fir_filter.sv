@@ -129,7 +129,7 @@ always_ff @(posedge clk or posedge reset) begin
         end
 
         if (in_sample_valid) begin
-            sum_result <= '0 // Reset sum before new computation
+            sum_result <= '0; // Reset sum before new computation
             // Shift old data values
             for(int i = FILTER_LENGTH-1; i > 0; i = i-1) begin
                 x[i] <= x[i-1];
