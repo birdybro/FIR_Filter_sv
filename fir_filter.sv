@@ -26,46 +26,6 @@
 // The ringing artifacts are likely due to the gibbs phenomenon
 // https://en.wikipedia.org/wiki/Gibbs_phenomenon
 //
-//
-// Coefficients calculated with the following example python code:
-//
-// import numpy as np
-// import matplotlib.pyplot as plt
-// from scipy.signal import firwin, freqz
-//
-// # Filter specifications
-// num_taps = 20  # number of filter coefficients (taps)
-// cutoff_hz = 60e3  # cutoff frequency, e.g., 80 kHz
-// fs = 300e3  # sampling rate, e.g., 300 kHz
-//
-// # Design the filter using firwin
-// coefficients = firwin(num_taps, cutoff_hz, fs=fs, window="barthann")
-//
-// # Print the coefficients
-// print("FIR filter coefficients:")
-// print(coefficients)
-//
-// # Optional: Plot the frequency response
-// w, h = freqz(coefficients, worN=8000)
-// plt.plot(0.5 * fs * w / np.pi, np.abs(h), 'b')
-// plt.title('FIR Filter Frequency Response')
-// plt.xlabel('Frequency [Hz]')
-// plt.ylabel('Gain')
-// plt.grid()
-// plt.show()
-//
-//
-// Scaling for coefficients done with the following example python code:
-//
-// coeffs = [-0.00000000e+00, -1.65280117e-03,  2.06185994e-18,  1.16875861e-02,
-//            1.33504934e-02, -2.26262259e-02, -5.98970277e-02,  1.28491969e-17,
-//            1.87164918e-01,  3.71973057e-01,  3.71973057e-01,  1.87164918e-01,
-//            1.28491969e-17, -5.98970277e-02, -2.26262259e-02,  1.33504934e-02,
-//            1.16875861e-02,  2.06185994e-18, -1.65280117e-03, -0.00000000e+00]
-//
-// scaled_coeffs = [round(c * (2**15)) for c in coeffs]
-// print(scaled_coeffs)
-
 
 module fir_filter #(
     parameter IW=16,
@@ -87,32 +47,16 @@ localparam SAMPLE_RATE_IN  = MCLK_RATE / DATA_CLK_IN;  // Sample rate divider fo
 localparam SAMPLE_RATE_OUT = MCLK_RATE / DATA_CLK_OUT; // Sample rate divider for outgoing data
 logic [31:0] counter_in;                               // Counter with enough bits to count to SAMPLE_RATE_IN
 logic [31:0] counter_out;                              // Counter with enough bits to count to SAMPLE_RATE_OUT
-logic in_sample_valid, out_sample_valid;               // Indicates when a new sample should be processed
+logic in_sample_valid, out_sample_valid;   // Indicates when a new sample should be processed
 
-logic [IW-1:0] x[FILTER_LENGTH-1:0];               // Array to store past input values
-logic [IW*2-1:0] mult_results[FILTER_LENGTH-1:0];  // Storing the multiplication results
-logic [IW*2-1:0] sum_result;                       // 32-bit result after summing
-logic [IW-1:0] downsample_out;
-
-always_ff @(posedge clk or posedge reset) begin
-    // Initialize registers
+always_ff (posedge clk or posedge reset) begin
     if (reset) begin
         counter_in       <= '0;
         counter_out      <= '0;
         in_sample_valid  <=  0;
         out_sample_valid <=  0;
-        sum_result       <= '0;
-        downsample_out   <= '0;
-        data_out         <= '0;
-        for (int i = FILTER_LENGTH-1; i> 0; i = i-1)begin
-            x[i] <= '0;
-        end
-        for (int i = FILTER_LENGTH-1; i> 0; i = i-1)begin
-            mult_results[i] <= '0;
-        end
-
     end else begin
-        // Counter Logic
+        // DATA_CLK_IN Sample rate clock divider
         if (counter_in == SAMPLE_RATE_IN) begin
             in_sample_valid <= 1'b1;
             counter_in <= 0;
@@ -120,6 +64,7 @@ always_ff @(posedge clk or posedge reset) begin
             in_sample_valid <= 1'b0;
             counter_in <= counter_in + 1;
         end
+        // DATA_CLK_OUT Sample rate clock divider
         if (counter_out == SAMPLE_RATE_OUT) begin
             out_sample_valid <= 1'b1;
             counter_out <= 0;
@@ -127,26 +72,52 @@ always_ff @(posedge clk or posedge reset) begin
             out_sample_valid <= 1'b0;
             counter_out <= counter_out + 1;
         end
+    end
+end
 
+// FIR pipeline registers and parameters
+localparam SUM_WIDTH = (2*IW) + $clog2(FILTER_LENGTH); // Prevent worst case overflow possibilities
+logic [IW-1:0] x[FILTER_LENGTH-1:0];                   // Array to store past input values
+logic [2*IW-1:0] mult_results[FILTER_LENGTH-1:0];      // Storing the multiplication results
+logic [SUM_WIDTH-1:0] sum_result;                      // 32-bit result after summing
+logic [IW-1:0] downsample_out;                         // Downsampled signals output, updates from sum_result at DATA_CLK_OUT rate
+
+always_ff @(posedge clk or posedge reset) begin
+    if (reset) begin
+        sum_result       <= '0;
+        downsample_out   <= '0;
+        data_out         <= '0;
+        for (int i = FILTER_LENGTH-1; i >= 0; i = i-1)begin
+            x[i] <= '0;
+        end
+        for (int i = FILTER_LENGTH-1; i >= 0; i = i-1)begin
+            mult_results[i] <= '0;
+        end
+    end else begin
+        // Pre-filtering at DATA_CLK_IN sample rate
         if (in_sample_valid) begin
-            sum_result <= '0; // Reset sum before new computation
             // Shift old data values
-            for(int i = FILTER_LENGTH-1; i > 0; i = i-1) begin
+            x[0] <= data_in;
+            for(int i = 1; i < FILTER_LENGTH; i = i+1) begin
                 x[i] <= x[i-1];
             end
-            x[0] <= data_in;
 
-            // Compute multiplication results
+            // Multiply by coefficients
             for(int i = 0; i < FILTER_LENGTH; i = i+1) begin
                 mult_results[i] <= x[i] * coefficients[i];
                 // Sum the results
+            end
+
+            // Summation
+            for(int i = 0; i < FILTER_LENGTH; i = i+1) begin
                 sum_result <= sum_result + mult_results[i];
             end
         end
+
         // Downsample to DATA_CLK_OUT sample rate
         if (out_sample_valid) begin
             // Downscale and round
-            downsample_out <= sum_result[IW*2-1:IW] + (sum_result[IW-1] ? 1 : 0); // Right shift by IW-1 and round
+            downsample_out <= sum_result[SUM_WIDTH-1:SUM_WIDTH-IW] + (sum_result[SUM_WIDTH-IW-1] ? 1 : 0); // Right shift by IW-1 and round
             data_out <= downsample_out; // Update output at resampled frequency rate
         end else begin
             data_out <= data_out; // Hold last value when not sampling new data
