@@ -5,7 +5,7 @@ import librosa.display
 from scipy.signal import kaiserord, firwin, lfilter, resample
 
 # Load audio file
-y, sr = librosa.load('mdfourier-dac-300000.wav', sr=None)  # Replace with your audio file path
+y, sr = librosa.load('ab2.wav', sr=223722)  # Replace with your audio file path
 
 # Assuming your loaded audio is sampled at 300kHz
 fs = sr

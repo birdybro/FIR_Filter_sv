@@ -1,18 +1,18 @@
 //
 // Copyright (c) 2023 Kevin Coleman
-// 
-// This source file is free software: you can redistribute it and/or modify 
-// it under the terms of the GNU General Public License as published 
-// by the Free Software Foundation, either version 3 of the License, or 
-// (at your option) any later version. 
-// 
+//
+// This source file is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
 // This source file is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of 
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-// 
-// You should have received a copy of the GNU General Public License 
-// along with this program.  If not, see <http://www.gnu.org/licenses/>. 
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 //
 // audio_fir_filter.sv
@@ -36,7 +36,7 @@ module fir_filter
 );
 
 localparam FILTER_LENGTH = 10;               // Adjust according to your coefficients length
-logic [15:0] COEFFICIENTS[FILTER_LENGTH-1:0] = '{221, 1073, 2890, 5243, 6956, 6956, 5243, 2890, 1073, 221};
+logic [15:0] COEFFICIENTS[FILTER_LENGTH-1:0] = '{89, 795, 2665, 5374, 7461, 7461, 5374, 2665, 795, 89};
 logic [15:0] x[FILTER_LENGTH-1:0];            // Array to store past input values
 logic [31:0] mult_results[FILTER_LENGTH-1:0]; // Storing the multiplication results
 logic [31:0] sum_result;                      // 32-bit result after summing
@@ -52,10 +52,10 @@ always_ff @(posedge clk or posedge reset) begin
         data_out     <= '0;
     end else begin
         // Shift old data values
+        x[0] <= data_in;
         for(int i = 1; i < FILTER_LENGTH; i = i + 1) begin
             x[i] <= x[i-1];
         end
-        x[0] <= data_in;
         // Compute multiplication results
         for(int i = 0; i < FILTER_LENGTH; i = i + 1) begin
             mult_results[i] <= x[i] * COEFFICIENTS[i];

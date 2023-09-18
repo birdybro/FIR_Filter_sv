@@ -1,14 +1,20 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import firwin, freqz, lfilter
+import librosa
+import librosa.display
+from scipy.signal import firwin, freqz, lfilter, resample
 import soundfile as sf
 import time
 
+y, sr = librosa.load('ab2.wav', sr=223722)  # Replace with your audio file path
+
+fs = sr
+
 # Parameters
-fs_in = 300e3  # Input Sampling Rate
-fs_out = 48e3  # Output Sampling Rate
+fs_in = fs  # Input Sampling Rate
+fs_out = 48000  # Output Sampling Rate
 downsampling_factor = fs_in / fs_out
-cutoff_freq = 24e3  # Chosen cutoff frequency
+cutoff_freq = 22e3  # Chosen cutoff frequency
 transition_bandwidth = 2e3  # Chosen transition bandwidth
 nyq = 0.5 * fs_in  # Nyquist Frequency for the input sample rate
 attenuation_dB = 45  # Example value; adjust based on requirements
@@ -28,6 +34,15 @@ scaled_taps = np.round(coeff_chebyshev * scaling_factor).astype(int)
 print("\nScaled coefficients for 16-bit fixed point:")
 print(scaled_taps)
 
+# Spectrogram of original signal
+plt.figure(figsize=(10, 4))
+D_original = librosa.amplitude_to_db(np.abs(librosa.stft(y)), ref=np.max)
+librosa.display.specshow(D_original, sr=sr, x_axis='time', y_axis='log')
+plt.colorbar(format='%+2.0f dB')
+plt.title('Spectrogram of Original Signal')
+plt.tight_layout()
+plt.show()
+
 # Plotting the filter's frequency response using freqz
 w_chebyshev, h_chebyshev = freqz(coeff_chebyshev, worN=8000)
 
@@ -41,4 +56,19 @@ plt.xlabel('Frequency [Hz]')
 plt.ylabel('Gain')
 plt.legend()
 plt.grid()
+plt.show()
+
+# Apply the filter to the audio signal
+filtered_signal = lfilter(coeff_chebyshev, 1, y)
+
+# Resample the filtered signal to 48kHz
+resampled_signal = resample(filtered_signal, int(len(filtered_signal) * 48e3 / fs))
+
+# Compute the frequency content of the resampled signal and plot
+plt.figure(figsize=(10, 4))
+D = librosa.amplitude_to_db(np.abs(librosa.stft(resampled_signal)), ref=np.max)
+librosa.display.specshow(D, sr=48e3, x_axis='time', y_axis='log')
+plt.colorbar(format='%+2.0f dB')
+plt.title('Spectrogram')
+plt.tight_layout()
 plt.show()
