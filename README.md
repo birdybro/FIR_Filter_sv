@@ -1,4 +1,5 @@
 # FIR_Filter_sv
+Not working currently, work in progress... soon... eventually...
 FIR Filter written in SystemVerilog
 by Kevin Coleman (birdybro)
 
